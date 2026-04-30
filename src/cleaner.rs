@@ -1,13 +1,24 @@
-use std::io::{self, Write};
-
-use console::style;
-use dialoguer::MultiSelect;
+use console::{style, Style};
+use dialoguer::{theme::ColorfulTheme, Confirm, MultiSelect};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
 use crate::display::{display_path, human_size};
 use crate::error::{Error, Result};
 use crate::scanner::{Artifact, ArtifactKind};
+
+fn app_theme() -> ColorfulTheme {
+    ColorfulTheme {
+        prompt_style: Style::new().bold(),
+        active_item_style: Style::new().cyan(),
+        inactive_item_style: Style::new(),
+        checked_item_prefix: style("  ✓ ".to_string()).green(),
+        unchecked_item_prefix: style("  ○ ".to_string()).dim(),
+        active_item_prefix: style("› ".to_string()).cyan(),
+        inactive_item_prefix: style("  ".to_string()),
+        ..ColorfulTheme::default()
+    }
+}
 
 pub fn clean(artifacts: &[Artifact], dry_run: bool, all: bool) -> Result<()> {
     if artifacts.is_empty() {
@@ -134,7 +145,7 @@ fn docker_ok(artifacts: &[&Artifact]) -> bool {
     }
 }
 
-fn pick_selection<'a>(artifacts: &'a [Artifact]) -> Result<Vec<&'a Artifact>> {
+fn pick_selection(artifacts: &[Artifact]) -> Result<Vec<&Artifact>> {
     let labels: Vec<String> = artifacts
         .iter()
         .map(|a| {
@@ -147,11 +158,11 @@ fn pick_selection<'a>(artifacts: &'a [Artifact]) -> Result<Vec<&'a Artifact>> {
         })
         .collect();
 
-    let maybe = MultiSelect::new()
+    let maybe = MultiSelect::with_theme(&app_theme())
         .with_prompt("Space to toggle  ·  Enter to confirm  ·  Esc to cancel")
         .items(&labels)
         .interact_opt()
-        .map_err(|e| Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        .map_err(|e| Error::Io(std::io::Error::other(e.to_string())))?;
 
     match maybe {
         None => Ok(vec![]),
@@ -216,13 +227,12 @@ fn perform_deletion(artifacts: &[&Artifact]) {
 }
 
 fn confirm(prompt: &str) -> Result<bool> {
-    print!("{} [y/N] ", style(prompt).bold());
-    io::stdout().flush().map_err(Error::Io)?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).map_err(Error::Io)?;
-
-    Ok(matches!(input.trim().to_lowercase().as_str(), "y" | "yes"))
+    Confirm::with_theme(&app_theme())
+        .with_prompt(prompt)
+        .default(false)
+        .interact_opt()
+        .map(|r| r.unwrap_or(false))
+        .map_err(|e| Error::Io(std::io::Error::other(e.to_string())))
 }
 
 fn group_by_kind<'a>(artifacts: &[&'a Artifact]) -> Vec<(&'static str, Vec<&'a Artifact>)> {
@@ -255,7 +265,6 @@ fn docker_is_running() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scanner::{Artifact, ArtifactKind};
     use std::fs;
 
     fn make_artifact(path: std::path::PathBuf, size: u64) -> Artifact {

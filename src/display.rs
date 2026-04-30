@@ -70,7 +70,7 @@ pub fn human_size(bytes: u64) -> String {
     }
 }
 
-fn fmt_count(n: usize) -> String {
+pub(crate) fn fmt_count(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::with_capacity(s.len() + s.len() / 3);
     for (i, c) in s.chars().rev().enumerate() {
@@ -111,7 +111,7 @@ pub fn print_results(artifacts: &[Artifact], elapsed: std::time::Duration) {
         format!(
             "  {} reclaimable — {} artefact{} found in {}",
             human_size(total),
-            fmt_count(count),
+            fmt_count(count as u64),
             if count == 1 { "" } else { "s" },
             elapsed_str
         ),
@@ -129,7 +129,7 @@ pub fn print_results(artifacts: &[Artifact], elapsed: std::time::Duration) {
 
     for g in &groups {
         let type_col = format!("{:<TYPE_W$}", g.label);
-        let count_col = style(format!("{:>COUNT_W$}", fmt_count(g.count))).dim();
+        let count_col = style(format!("{:>COUNT_W$}", fmt_count(g.count as u64))).dim();
         let size_col = size_style(g.total, format!("{:>SIZE_W$}", human_size(g.total)));
 
         let filled = bar_cells(g.total, max_size).min(BAR_W);
@@ -142,7 +142,7 @@ pub fn print_results(artifacts: &[Artifact], elapsed: std::time::Duration) {
     println!("  {sep}");
 
     let total_label = style(format!("{:<TYPE_W$}", "Total")).bold();
-    let total_count = style(format!("{:>COUNT_W$}", fmt_count(count))).dim().bold();
+    let total_count = style(format!("{:>COUNT_W$}", fmt_count(count as u64))).dim().bold();
     let total_size = size_style(total, format!("{:>SIZE_W$}", human_size(total))).bold();
     println!("  {total_label}  {total_count}  {total_size}\n");
 }
