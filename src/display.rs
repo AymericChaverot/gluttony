@@ -1,4 +1,5 @@
 use std::cmp::Reverse;
+use std::path::Path;
 
 use console::{style, StyledObject};
 
@@ -148,6 +149,37 @@ pub fn print_results(artifacts: &[Artifact], elapsed: std::time::Duration) {
 
 pub fn print_no_clean_hint() {
     println!("{}", style("  → Run with --clean to remove them.").dim());
+}
+
+pub fn display_path(path: &Path) -> String {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from);
+    let raw = match home {
+        Some(h) => match path.strip_prefix(&h) {
+            Ok(rel) => format!("~/{}", rel.display()),
+            Err(_) => path.display().to_string(),
+        },
+        None => path.display().to_string(),
+    };
+    raw.replace('\\', "/")
+}
+
+pub fn print_list(artifacts: &[Artifact]) {
+    if artifacts.is_empty() {
+        return;
+    }
+    println!();
+    for (i, a) in artifacts.iter().enumerate() {
+        println!(
+            "  {:>4}  {:<18}  {}  {}",
+            style(format!("{}", i + 1)).dim(),
+            a.kind.label(),
+            size_style(a.size, format!("{:>10}", human_size(a.size))),
+            style(display_path(&a.path)).dim(),
+        );
+    }
+    println!();
 }
 
 #[cfg(test)]

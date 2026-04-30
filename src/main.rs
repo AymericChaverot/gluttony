@@ -5,12 +5,18 @@ mod error;
 mod scanner;
 mod update;
 
+use clap::CommandFactory;
 use clap::Parser;
 use cli::Cli;
 use error::Result;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if let Some(shell) = cli.completions {
+        clap_complete::generate(shell, &mut Cli::command(), "gluttony", &mut std::io::stdout());
+        return Ok(());
+    }
 
     update::check_and_notify();
 
@@ -28,9 +34,16 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    if cli.list {
+        display::print_list(&artifacts);
+    }
+
     if cli.clean {
-        cleaner::clean(&artifacts, cli.dry_run)?;
-    } else {
+        cleaner::clean(&artifacts, cli.dry_run, cli.all)?;
+    } else if cli.dry_run {
+        // Standalone --dry-run: preview everything that would be removed
+        cleaner::clean(&artifacts, true, true)?;
+    } else if !cli.list {
         display::print_no_clean_hint();
     }
 
