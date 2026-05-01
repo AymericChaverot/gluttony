@@ -280,7 +280,11 @@ pub fn empty_trash() -> Result<()> {
         return Ok(());
     }
 
-    let total_size: u64 = sessions.iter().flat_map(|s| s.entries.iter()).map(|e| e.size).sum();
+    let total_size: u64 = sessions
+        .iter()
+        .flat_map(|s| s.entries.iter())
+        .map(|e| e.size)
+        .sum();
     let total_entries: usize = sessions.iter().map(|s| s.entries.len()).sum();
 
     println!(
@@ -330,9 +334,12 @@ Anything cleared from the trash cannot be recovered anymore.  /// ";
     if errors == 0 {
         println!(
             "{}",
-            style(format!("Trash emptied. {} permanently freed.", human_size(freed)))
-                .bold()
-                .green()
+            style(format!(
+                "Trash emptied. {} permanently freed.",
+                human_size(freed)
+            ))
+            .bold()
+            .green()
         );
     } else {
         println!(

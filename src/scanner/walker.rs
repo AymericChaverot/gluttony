@@ -21,11 +21,7 @@ pub fn should_skip_name(name: &str) -> bool {
 }
 
 fn should_skip(entry: &walkdir::DirEntry) -> bool {
-    entry.file_type().is_dir()
-        && entry
-            .file_name()
-            .to_str()
-            .is_some_and(should_skip_name)
+    entry.file_type().is_dir() && entry.file_name().to_str().is_some_and(should_skip_name)
 }
 
 // Directories we never recurse into regardless of classification.

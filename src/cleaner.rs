@@ -98,7 +98,10 @@ fn print_removal_summary(artifacts: &[&Artifact], total: u64) {
             println!("    {}", style(display_path(&a.path)).dim());
         }
         if items.len() > 3 {
-            println!("    {}", style(format!("... and {} more", items.len() - 3)).dim());
+            println!(
+                "    {}",
+                style(format!("... and {} more", items.len() - 3)).dim()
+            );
         }
     }
 
@@ -114,7 +117,10 @@ fn print_removal_summary(artifacts: &[&Artifact], total: u64) {
         );
     }
 
-    println!("{}", style("Artefacts will be moved to trash. Run --undo to restore.").dim());
+    println!(
+        "{}",
+        style("Artefacts will be moved to trash. Run --undo to restore.").dim()
+    );
     println!(
         "{}\n",
         style("  Tip: run with --dry-run to preview exact paths without deleting.").dim()
@@ -174,27 +180,29 @@ fn perform_deletion(artifacts: &[&Artifact]) -> Result<()> {
     let results: Vec<Option<trash::TrashEntry>> = artifacts
         .par_iter()
         .enumerate()
-        .map(|(i, &a)| match trash::move_artifact(&a.path, &session_dir, i) {
-            Ok(()) => {
-                pb.inc(1);
-                Some(trash::TrashEntry {
-                    original: a.path.clone(),
-                    kind: a.kind.label().to_string(),
-                    size: a.size,
-                    index: i,
-                })
-            }
-            Err(e) => {
-                pb.println(format!(
-                    "  {} {} -- {}",
-                    style("ERR").red(),
-                    display_path(&a.path),
-                    style(e.to_string()).dim(),
-                ));
-                pb.inc(1);
-                None
-            }
-        })
+        .map(
+            |(i, &a)| match trash::move_artifact(&a.path, &session_dir, i) {
+                Ok(()) => {
+                    pb.inc(1);
+                    Some(trash::TrashEntry {
+                        original: a.path.clone(),
+                        kind: a.kind.label().to_string(),
+                        size: a.size,
+                        index: i,
+                    })
+                }
+                Err(e) => {
+                    pb.println(format!(
+                        "  {} {} -- {}",
+                        style("ERR").red(),
+                        display_path(&a.path),
+                        style(e.to_string()).dim(),
+                    ));
+                    pb.inc(1);
+                    None
+                }
+            },
+        )
         .collect();
 
     pb.finish_and_clear();

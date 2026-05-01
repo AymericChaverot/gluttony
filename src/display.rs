@@ -158,7 +158,9 @@ pub fn print_results(artifacts: &[Artifact], elapsed: std::time::Duration) {
     println!("  {sep}");
 
     let total_label = style(format!("{:<TYPE_W$}", "Total")).bold();
-    let total_count = style(format!("{:>COUNT_W$}", fmt_count(count as u64))).dim().bold();
+    let total_count = style(format!("{:>COUNT_W$}", fmt_count(count as u64)))
+        .dim()
+        .bold();
     let total_size = size_style(total, format!("{:>SIZE_W$}", human_size(total))).bold();
     println!("  {total_label}  {total_count}  {total_size}\n");
 }

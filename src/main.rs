@@ -15,7 +15,12 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if let Some(shell) = cli.completions {
-        clap_complete::generate(shell, &mut Cli::command(), "gluttony", &mut std::io::stdout());
+        clap_complete::generate(
+            shell,
+            &mut Cli::command(),
+            "gluttony",
+            &mut std::io::stdout(),
+        );
         return Ok(());
     }
 
