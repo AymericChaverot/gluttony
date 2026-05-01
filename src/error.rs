@@ -11,8 +11,8 @@ pub enum Error {
     #[error("update check failed: {0}")]
     Update(#[from] Box<ureq::Error>),
 
-    #[error("failed to parse release info: {0}")]
-    Parse(#[from] serde_json::Error),
+    #[error("json error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1,24 +1,14 @@
-use console::{style, Style};
-use dialoguer::{theme::ColorfulTheme, Confirm, MultiSelect};
+use std::io::{self, Write};
+
+use console::style;
+use dialoguer::MultiSelect;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
-use crate::display::{display_path, human_size};
-use crate::error::{Error, Result};
+use crate::display::{app_theme, display_path, human_size};
+use crate::error::Result;
 use crate::scanner::{Artifact, ArtifactKind};
-
-fn app_theme() -> ColorfulTheme {
-    ColorfulTheme {
-        prompt_style: Style::new().bold(),
-        active_item_style: Style::new().cyan(),
-        inactive_item_style: Style::new(),
-        checked_item_prefix: style("  ✓ ".to_string()).green(),
-        unchecked_item_prefix: style("  ○ ".to_string()).dim(),
-        active_item_prefix: style("› ".to_string()).cyan(),
-        inactive_item_prefix: style("  ".to_string()),
-        ..ColorfulTheme::default()
-    }
-}
+use crate::trash;
 
 pub fn clean(artifacts: &[Artifact], dry_run: bool, all: bool) -> Result<()> {
     if artifacts.is_empty() {
@@ -30,7 +20,7 @@ pub fn clean(artifacts: &[Artifact], dry_run: bool, all: bool) -> Result<()> {
     if dry_run {
         println!(
             "{}\n",
-            style("Dry run — nothing will be deleted.").yellow().bold()
+            style("Dry run -- nothing will be deleted.").yellow().bold()
         );
         for a in artifacts {
             println!("  {} {}", style("would remove").dim(), a.path.display());
@@ -76,7 +66,7 @@ pub fn clean(artifacts: &[Artifact], dry_run: bool, all: bool) -> Result<()> {
     };
 
     println!();
-    perform_deletion(&selected);
+    perform_deletion(&selected)?;
 
     Ok(())
 }
@@ -108,7 +98,7 @@ fn print_removal_summary(artifacts: &[&Artifact], total: u64) {
             println!("    {}", style(display_path(&a.path)).dim());
         }
         if items.len() > 3 {
-            println!("    {}", style(format!("… and {} more", items.len() - 3)).dim());
+            println!("    {}", style(format!("... and {} more", items.len() - 3)).dim());
         }
     }
 
@@ -118,13 +108,13 @@ fn print_removal_summary(artifacts: &[&Artifact], total: u64) {
         println!(
             "{}\n",
             style(
-                "  ⚠  Docker data is included — all images, containers and volumes will be lost."
+                "  !! Docker data is included -- all images, containers and volumes will be lost."
             )
             .yellow()
         );
     }
 
-    println!("{}", style("This cannot be undone.").red());
+    println!("{}", style("Artefacts will be moved to trash. Run --undo to restore.").dim());
     println!(
         "{}\n",
         style("  Tip: run with --dry-run to preview exact paths without deleting.").dim()
@@ -159,10 +149,10 @@ fn pick_selection(artifacts: &[Artifact]) -> Result<Vec<&Artifact>> {
         .collect();
 
     let maybe = MultiSelect::with_theme(&app_theme())
-        .with_prompt("Space to toggle  ·  Enter to confirm  ·  Esc to cancel")
+        .with_prompt("Space to toggle  .  Enter to confirm  .  Esc to cancel")
         .items(&labels)
         .interact_opt()
-        .map_err(|e| Error::Io(std::io::Error::other(e.to_string())))?;
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
 
     match maybe {
         None => Ok(vec![]),
@@ -171,7 +161,9 @@ fn pick_selection(artifacts: &[Artifact]) -> Result<Vec<&Artifact>> {
     }
 }
 
-fn perform_deletion(artifacts: &[&Artifact]) {
+fn perform_deletion(artifacts: &[&Artifact]) -> Result<()> {
+    let (session_id, session_dir) = trash::create_session()?;
+
     let pb = ProgressBar::new(artifacts.len() as u64);
     pb.set_style(
         ProgressStyle::with_template("  {bar:35.green/dim}  {pos}/{len}")
@@ -179,44 +171,56 @@ fn perform_deletion(artifacts: &[&Artifact]) {
             .progress_chars("█░"),
     );
 
-    let results: Vec<(bool, u64)> = artifacts
+    let results: Vec<Option<trash::TrashEntry>> = artifacts
         .par_iter()
-        .map(|&a| match std::fs::remove_dir_all(&a.path) {
+        .enumerate()
+        .map(|(i, &a)| match trash::move_artifact(&a.path, &session_dir, i) {
             Ok(()) => {
                 pb.inc(1);
-                (true, a.size)
+                Some(trash::TrashEntry {
+                    original: a.path.clone(),
+                    kind: a.kind.label().to_string(),
+                    size: a.size,
+                    index: i,
+                })
             }
             Err(e) => {
                 pb.println(format!(
-                    "  {} {} — {}",
-                    style("✗").red(),
+                    "  {} {} -- {}",
+                    style("ERR").red(),
                     display_path(&a.path),
                     style(e.to_string()).dim(),
                 ));
                 pb.inc(1);
-                (false, 0u64)
+                None
             }
         })
         .collect();
 
     pb.finish_and_clear();
 
-    let freed: u64 = results.iter().filter(|(ok, _)| *ok).map(|(_, s)| s).sum();
-    let error_count: usize = results.iter().filter(|(ok, _)| !ok).count();
+    let entries: Vec<trash::TrashEntry> = results.into_iter().flatten().collect();
+    let freed: u64 = entries.iter().map(|e| e.size).sum();
+    let error_count = artifacts.len() - entries.len();
+
+    trash::commit_session(&session_id, entries)?;
 
     println!();
     if error_count == 0 {
         println!(
             "{}",
-            style(format!("Done. Freed {}.", human_size(freed)))
-                .bold()
-                .green()
+            style(format!(
+                "Done. Moved {} to trash.  Run --undo to restore.",
+                human_size(freed)
+            ))
+            .bold()
+            .green()
         );
     } else {
         println!(
             "{}",
             style(format!(
-                "Done. Freed {}. {} item{} could not be removed (permission denied?).",
+                "Done. Moved {}. {} item{} could not be moved (permission denied?).",
                 human_size(freed),
                 error_count,
                 if error_count == 1 { "" } else { "s" },
@@ -224,15 +228,18 @@ fn perform_deletion(artifacts: &[&Artifact]) {
             .yellow()
         );
     }
+
+    Ok(())
 }
 
 fn confirm(prompt: &str) -> Result<bool> {
-    Confirm::with_theme(&app_theme())
-        .with_prompt(prompt)
-        .default(false)
-        .interact_opt()
-        .map(|r| r.unwrap_or(false))
-        .map_err(|e| Error::Io(std::io::Error::other(e.to_string())))
+    print!("{} [y/N] ", style(prompt).bold());
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    Ok(matches!(input.trim().to_lowercase().as_str(), "y" | "yes"))
 }
 
 fn group_by_kind<'a>(artifacts: &[&'a Artifact]) -> Vec<(&'static str, Vec<&'a Artifact>)> {
@@ -287,5 +294,4 @@ mod tests {
 
         assert!(target.exists(), "dry run must not delete the directory");
     }
-
 }

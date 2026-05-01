@@ -3,6 +3,7 @@ mod cli;
 mod display;
 mod error;
 mod scanner;
+mod trash;
 mod update;
 
 use clap::CommandFactory;
@@ -16,6 +17,14 @@ fn main() -> Result<()> {
     if let Some(shell) = cli.completions {
         clap_complete::generate(shell, &mut Cli::command(), "gluttony", &mut std::io::stdout());
         return Ok(());
+    }
+
+    if cli.undo {
+        return trash::undo_interactive();
+    }
+
+    if cli.empty_trash {
+        return trash::empty_trash();
     }
 
     update::check_and_notify();
@@ -41,7 +50,6 @@ fn main() -> Result<()> {
     if cli.clean {
         cleaner::clean(&artifacts, cli.dry_run, cli.all)?;
     } else if cli.dry_run {
-        // Standalone --dry-run: preview everything that would be removed
         cleaner::clean(&artifacts, true, true)?;
     } else if !cli.list {
         display::print_no_clean_hint();

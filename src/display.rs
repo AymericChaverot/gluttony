@@ -1,7 +1,8 @@
 use std::cmp::Reverse;
 use std::path::Path;
 
-use console::{style, StyledObject};
+use console::{style, Style, StyledObject};
+use dialoguer::theme::ColorfulTheme;
 
 use crate::scanner::Artifact;
 
@@ -10,6 +11,21 @@ const COUNT_W: usize = 7;
 const SIZE_W: usize = 10;
 const BAR_W: usize = 20;
 const ROW_W: usize = TYPE_W + 2 + COUNT_W + 2 + SIZE_W + 2 + BAR_W;
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+
+pub fn app_theme() -> ColorfulTheme {
+    ColorfulTheme {
+        prompt_style: Style::new().bold(),
+        active_item_style: Style::new().cyan(),
+        inactive_item_style: Style::new(),
+        checked_item_prefix: style("[x]".to_string()).green(),
+        unchecked_item_prefix: style("[ ]".to_string()).dim(),
+        active_item_prefix: style("> ".to_string()).cyan(),
+        inactive_item_prefix: style("  ".to_string()),
+        ..ColorfulTheme::default()
+    }
+}
 
 // ── Thresholds ────────────────────────────────────────────────────────────────
 
@@ -148,7 +164,7 @@ pub fn print_results(artifacts: &[Artifact], elapsed: std::time::Duration) {
 }
 
 pub fn print_no_clean_hint() {
-    println!("{}", style("  → Run with --clean to remove them.").dim());
+    println!("{}", style("  -> Run with --clean to remove them.").dim());
 }
 
 pub fn display_path(path: &Path) -> String {

@@ -2,8 +2,10 @@ mod build;
 mod docker;
 mod elixir;
 mod flutter;
+mod go;
 mod node;
 mod python;
+mod ruby;
 pub mod walker;
 
 use std::{
@@ -37,6 +39,8 @@ pub enum ArtifactKind {
     ParcelCache,
     FlutterBuild,
     ElixirBuild,
+    GoModuleCache,
+    RubyGems,
 }
 
 impl ArtifactKind {
@@ -58,6 +62,8 @@ impl ArtifactKind {
             Self::ParcelCache => ".parcel-cache",
             Self::FlutterBuild => "Flutter build",
             Self::ElixirBuild => "Elixir _build",
+            Self::GoModuleCache => "Go module cache",
+            Self::RubyGems => "Ruby gems",
         }
     }
 }
@@ -123,6 +129,18 @@ pub fn scan(root: &Path) -> Result<Vec<Artifact>> {
             let xcode = h.join("Library/Developer/Xcode/DerivedData");
             if xcode.exists() {
                 candidates.push((xcode, ArtifactKind::XcodeDerivedData));
+            }
+        }
+
+        if let Some(p) = go::cache_path() {
+            if !candidates.iter().any(|(c, _)| c == &p) {
+                candidates.push((p, ArtifactKind::GoModuleCache));
+            }
+        }
+
+        if let Some(p) = ruby::cache_path() {
+            if !candidates.iter().any(|(c, _)| c == &p) {
+                candidates.push((p, ArtifactKind::RubyGems));
             }
         }
     }
