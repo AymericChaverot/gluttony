@@ -145,18 +145,10 @@ pub fn scan(root: &Path) -> Result<Vec<Artifact>> {
         }
     }
 
-    if root_encompasses_home {
-        #[cfg(any(windows, target_os = "macos"))]
-        for path in docker::data_paths() {
-            if !candidates.iter().any(|(p, _)| p == &path) {
-                candidates.push((path, ArtifactKind::DockerData));
-            }
-        }
-    }
-
-    #[cfg(target_os = "linux")]
+    // Only include docker paths that actually fall within the scan root so that
+    // scanning a project directory never accidentally surfaces /var/lib/docker.
     for path in docker::data_paths() {
-        if !candidates.iter().any(|(p, _)| p == &path) {
+        if path.starts_with(root) && !candidates.iter().any(|(p, _)| p == &path) {
             candidates.push((path, ArtifactKind::DockerData));
         }
     }
