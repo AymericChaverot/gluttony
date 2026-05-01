@@ -35,9 +35,29 @@ Built in Rust for speed, safety, and reliability.
 ## Usage
 
 ```bash
-gluttony           # Scan and display what can be cleaned
-gluttony --clean   # Clean after interactive confirmation
+gluttony                  # Scan and display what can be cleaned
+gluttony --list           # Show every detected path individually
+gluttony --clean          # Interactive cherry-pick: select which artefacts to remove
+gluttony --clean --all    # Remove everything (double confirmation required)
+gluttony --dry-run        # Preview what would be removed without deleting anything
+gluttony --path ~/code    # Scan a specific directory instead of home
+gluttony --undo           # Restore artefacts from a previous clean session
+gluttony --empty-trash    # Permanently delete everything in the trash (irreversible)
+gluttony --completions bash  # Generate shell completions (bash, zsh, fish, powershell, elvish)
 ```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--list` | List every detected path individually with size and type |
+| `--clean` | Enter interactive mode to cherry-pick artefacts for deletion |
+| `--clean --all` | Remove all detected artefacts without cherry-picking (asks twice) |
+| `--dry-run` | Preview exact paths that would be removed without deleting |
+| `--path <PATH>` | Root directory to scan (default: home directory) |
+| `--undo` | List recent clean sessions and restore one interactively |
+| `--empty-trash` | Permanently delete all trash sessions (irreversible, asks twice) |
+| `--completions <SHELL>` | Print shell completions and exit |
 
 ## Installation
 
@@ -89,10 +109,22 @@ Run the install script again — it always fetches the latest release and overwr
 | `.gradle/` | Gradle build caches |
 | `target/` | Rust and Maven build output |
 | `__pycache__/` | Python bytecode caches |
+| `.pytest_cache/` | Pytest test caches |
 | `.venv/`, `venv/` | Python virtual environments |
+| `.tox/` | Tox test environments |
+| `.next/` | Next.js build cache |
+| `.nuxt/` | Nuxt.js build cache |
+| `.turbo/` | Turborepo cache |
+| `.parcel-cache/` | Parcel bundler cache |
+| `build/` (Flutter) | Flutter build output |
+| `_build/` (Elixir) | Elixir/Mix build output |
+| Go module cache | `$GOPATH/pkg/mod` (default `~/go/pkg/mod`) |
+| Ruby gems | `~/.gem/ruby` |
 | Docker images | Dangling and unused images |
 | Cargo registry | Cached crates and compiled artifacts |
 | Xcode derived data | iOS/macOS build cache |
+
+Gluttony uses smart detection to avoid false positives — it checks for project markers (e.g., `package.json`, `Cargo.toml`) and git repository ancestry to distinguish developer artefacts from application-bundled ones (VS Code, JetBrains, etc.).
 
 ## Platform Support
 
@@ -161,20 +193,52 @@ git push origin v0.1.0
 
 The CD pipeline handles the rest.
 
+## Trash & Undo
+
+Gluttony never permanently deletes artefacts immediately. Instead it **moves them to `~/.gluttony/trash/`** and records a session manifest. Sessions are automatically purged after **30 days**.
+
+To restore a previous session:
+
+```bash
+gluttony --undo
+```
+
+To permanently free the disk space occupied by the trash:
+
+```bash
+gluttony --empty-trash
+```
+
+This shows the total size held in trash, then asks for **double confirmation** with a prominent warning before deleting anything. This action cannot be undone.
+
+This shows an interactive list of recent sessions. Select one to move everything back to its original location.
+
 ## Architecture
 
 ```
 src/
-├── main.rs      Entry point — wires CLI to business logic
-├── cli.rs       Argument parsing and flag handling
-├── error.rs     Domain error types
-├── scanner.rs   Recursive filesystem scanner with artefact detection
-├── cleaner.rs   Confirmation flow and deletion logic
-└── update.rs    Auto-update version check via GitHub API
+├── main.rs          Entry point — wires CLI to business logic
+├── cli.rs           Argument parsing and flag handling
+├── display.rs       Result formatting, table display, shared theme
+├── error.rs         Domain error types
+├── cleaner.rs       Interactive selection, confirmation flow, and parallel deletion
+├── trash.rs         Move-to-trash, manifest management, and undo/restore
+├── update.rs        Auto-update version check via GitHub API
+└── scanner/
+    ├── mod.rs       Public API, scan() orchestration, ArtifactKind/Artifact types
+    ├── walker.rs    Parallel walk logic, classification dispatch, git-ancestry check
+    ├── node.rs      JS ecosystem (node_modules, .next, .nuxt, .turbo, .parcel-cache)
+    ├── python.rs    Python ecosystem (__pycache__, .pytest_cache, .venv, .tox)
+    ├── build.rs     target/ (Cargo + Maven)
+    ├── flutter.rs   Flutter build/
+    ├── elixir.rs    Elixir _build/
+    ├── go.rs        Go module cache
+    ├── ruby.rs      Ruby gems
+    └── docker.rs    Docker data paths
 
 scripts/
-├── install.sh   Installer for macOS and Linux
-└── install.ps1  Installer for Windows (PowerShell)
+├── install.sh       Installer for macOS and Linux
+└── install.ps1      Installer for Windows (PowerShell)
 ```
 
 Each module has a single responsibility. No unsafe code.
@@ -184,10 +248,15 @@ Each module has a single responsibility. No unsafe code.
 | Crate | Purpose |
 |-------|---------|
 | [`clap`](https://crates.io/crates/clap) | Command-line argument parsing |
+| [`clap_complete`](https://crates.io/crates/clap_complete) | Shell completions generation |
 | [`walkdir`](https://crates.io/crates/walkdir) | Recursive directory traversal |
+| [`rayon`](https://crates.io/crates/rayon) | Parallel scanning and deletion |
 | [`indicatif`](https://crates.io/crates/indicatif) | Progress bars and spinners |
+| [`console`](https://crates.io/crates/console) | Terminal styling and colors |
+| [`dialoguer`](https://crates.io/crates/dialoguer) | Interactive multi-select prompts |
 | [`ureq`](https://crates.io/crates/ureq) | HTTP client for update checks |
 | [`serde`](https://crates.io/crates/serde) / [`serde_json`](https://crates.io/crates/serde_json) | JSON deserialization for GitHub API |
+| [`thiserror`](https://crates.io/crates/thiserror) | Ergonomic error type derivation |
 
 ## License
 
