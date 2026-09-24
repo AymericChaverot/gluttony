@@ -1,7 +1,8 @@
 [package]
 name = "gluttony"
-version = "0.1.0"
-edition = "2021"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.87"
 description = "Reclaim the disk space your toolchain ate without asking"
 authors = ["Aymeric CHAVEROT"]
 license = "MIT"
@@ -11,20 +12,21 @@ name = "gluttony"
 path = "src/main.rs"
 
 [dependencies]
-clap           = { version = "4", features = ["derive"] }
-clap_complete  = "4"
-walkdir        = "2"
-indicatif      = "0.17"
-console        = "0.15"
-dialoguer      = "0.11"
-rayon          = "1"
-ureq           = { version = "2", features = ["json"] }
-serde          = { version = "1", features = ["derive"] }
-serde_json     = "1"
-thiserror      = "1"
+clap          = { version = "4.6", features = ["derive"] }
+clap_complete = "4.6"
+console       = "0.16"
+ctrlc         = "3.5"
+fs4           = "1.1"
+indicatif     = "0.18"
+rayon         = "1.12"
+serde         = { version = "1.0", features = ["derive"] }
+serde_json    = "1.0"
+thiserror     = "2.0"
+ureq          = { version = "3.4", features = ["json"] }
+walkdir       = "2.5"
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "3.27"
 
 [profile.release]
 opt-level     = 3

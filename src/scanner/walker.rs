@@ -6,8 +6,8 @@ use std::{
 use indicatif::ProgressBar;
 use walkdir::WalkDir;
 
-use super::{build, elixir, flutter, node, python, ArtifactKind};
-use crate::display::fmt_count;
+use super::{ArtifactKind, build, elixir, flutter, node, python};
+use crate::ui::{self, fmt_count};
 
 pub fn should_skip_name(name: &str) -> bool {
     if matches!(name, ".git" | ".hg" | ".svn") {
@@ -25,7 +25,7 @@ fn should_skip(entry: &walkdir::DirEntry) -> bool {
 }
 
 // Directories we never recurse into regardless of classification.
-fn is_artefact_boundary(name: &str) -> bool {
+pub fn is_artefact_boundary(name: &str) -> bool {
     matches!(
         name,
         "node_modules"
@@ -100,10 +100,24 @@ pub fn walk_subtree(
                     let c = checked.fetch_add(500, Ordering::Relaxed) + 500;
                     let f = found_count.load(Ordering::Relaxed);
                     spinner.set_message(format!(
-                        "Scanning…  {} entries checked, {} found",
-                        fmt_count(c),
-                        f,
+                        "{}  {}",
+                        console::style("scanning").bold(),
+                        console::style(format!(
+                            "{} entries · {} found",
+                            fmt_count(c),
+                            fmt_count(f)
+                        ))
+                        .dim(),
                     ));
+                    // Several walkers share the line: whichever reports last wins,
+                    // which reads as a live glimpse of where the scan currently is.
+                    let dir = if entry.file_type().is_dir() {
+                        entry.path()
+                    } else {
+                        entry.path().parent().unwrap_or(entry.path())
+                    };
+                    let shown = ui::truncate_middle(&ui::display_path(dir), ui::width() - 6);
+                    spinner.set_prefix(console::style(shown).dim().to_string());
                 }
                 if should_skip(&entry) {
                     walker.skip_current_dir();

@@ -1,4 +1,4 @@
-use super::{walker::has_git_ancestor, ArtifactKind};
+use super::{ArtifactKind, walker::has_git_ancestor};
 
 pub fn classify(name: &str, entry: &walkdir::DirEntry) -> Option<ArtifactKind> {
     match name {

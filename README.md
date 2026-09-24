@@ -28,36 +28,73 @@ Built in Rust for speed, safety, and reliability.
 
 ## The Problem
 
-`node_modules`. Gradle caches. Cargo build artefacts. Dangling Docker images. Pip wheels. Maven local repositories. Left alone, these quietly consume tens of gigabytes. You know they're there — somewhere — but tracking them down takes more time than it's worth.
+`node_modules`. Cargo `target/` directories. Gradle caches. Python virtualenvs. The Go module cache. Left alone, these quietly consume tens of gigabytes. You know they're there — somewhere — but tracking them down takes more time than it's worth.
 
 **Gluttony finds them all, shows you the damage, and cleans on your confirmation.**
 
 ## Usage
 
 ```bash
-gluttony                  # Scan and display what can be cleaned
-gluttony --list           # Show every detected path individually
-gluttony --clean          # Interactive cherry-pick: select which artefacts to remove
-gluttony --clean --all    # Remove everything (double confirmation required)
-gluttony --dry-run        # Preview what would be removed without deleting anything
-gluttony --path ~/code    # Scan a specific directory instead of home
-gluttony --undo           # Restore artefacts from a previous clean session
-gluttony --empty-trash    # Permanently delete everything in the trash (irreversible)
-gluttony --completions bash  # Generate shell completions (bash, zsh, fish, powershell, elvish)
+gluttony                          # Scan your home directory and show what can be reclaimed
+gluttony ~/code                   # Scan a specific directory
+gluttony --list                   # Every artefact with its size, last activity and path
+gluttony --projects               # Breakdown per project (monorepos grouped by git root)
+gluttony clean                    # Interactive picker: choose what to move to the trash
+gluttony clean --older-than 3mo   # Only projects idle for at least 3 months
+gluttony clean --only node --all  # Everything from one ecosystem, no picker
+gluttony clean --dry-run          # Preview exact paths, touch nothing
+gluttony clean --permanent        # Delete for good instead of using the trash
+gluttony undo                     # Restore a previous clean session
+gluttony trash                    # See what the trash holds
+gluttony trash empty              # Permanently free the trash
+gluttony completions zsh          # Shell completions (bash, zsh, fish, powershell, elvish)
 ```
 
-### Flags
+### Filters
+
+Available on both `scan` (the default command) and `clean`:
 
 | Flag | Description |
 |------|-------------|
-| `--list` | List every detected path individually with size and type |
-| `--clean` | Enter interactive mode to cherry-pick artefacts for deletion |
-| `--clean --all` | Remove all detected artefacts without cherry-picking (asks twice) |
-| `--dry-run` | Preview exact paths that would be removed without deleting |
-| `--path <PATH>` | Root directory to scan (default: home directory) |
-| `--undo` | List recent clean sessions and restore one interactively |
-| `--empty-trash` | Permanently delete all trash sessions (irreversible, asks twice) |
-| `--completions <SHELL>` | Print shell completions and exit |
+| `--only <ECOSYSTEMS>` | Comma-separated: `node`, `rust`, `python`, `jvm`, `flutter`, `elixir`, `go`, `ruby`, `xcode` |
+| `--exclude <TEXT>` | Skip paths containing this text (repeatable) |
+| `--min-size <SIZE>` | Ignore artefacts smaller than this (`50MB`, `1.5G`) |
+| `--older-than <AGE>` | Only projects idle for at least this long (`30d`, `2w`, `6mo`, `1y`) |
+
+### Scan options
+
+| Flag | Description |
+|------|-------------|
+| `-l`, `--list` | List every artefact with size, last activity and path |
+| `-p`, `--projects` | Group artefacts by project |
+| `--json` | Machine-readable output |
+
+### Clean options
+
+| Flag | Description |
+|------|-------------|
+| `-a`, `--all` | Take everything that matches, without the picker |
+| `--dry-run` | Show what would be removed, touch nothing |
+| `--permanent` | Delete for good instead of moving to the trash (asks you to type `delete`) |
+| `-y`, `--yes` | Do not ask for confirmation |
+
+### The picker
+
+`gluttony clean` opens an inline picker with a live total of what is selected:
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` / `j` `k` | Move |
+| `space` | Toggle the current artefact |
+| `a` / `n` / `i` | Select all / none / invert (visible rows) |
+| `s` | Select stale artefacts (projects idle for 90+ days) |
+| `/` | Filter by type or path |
+| `enter` | Confirm |
+| `esc` / `q` | Cancel |
+
+### Last activity
+
+Each artefact shows when its project was last worked on, derived from git activity (`.git/index`, `.git/logs/HEAD`) and the modification times of the project's top-level files. Projects active in the last week are highlighted, since cleaning them means a rebuild soon.
 
 ## Installation
 
@@ -107,7 +144,7 @@ Run the install script again — it always fetches the latest release and overwr
 |----------|-------------|
 | `node_modules/` | Node.js dependency trees |
 | `.gradle/` | Gradle build caches |
-| `target/` | Rust and Maven build output |
+| `target/` | Rust (Cargo) and Maven build output |
 | `__pycache__/` | Python bytecode caches |
 | `.pytest_cache/` | Pytest test caches |
 | `.venv/`, `venv/` | Python virtual environments |
@@ -120,11 +157,19 @@ Run the install script again — it always fetches the latest release and overwr
 | `_build/` (Elixir) | Elixir/Mix build output |
 | Go module cache | `$GOPATH/pkg/mod` (default `~/go/pkg/mod`) |
 | Ruby gems | `~/.gem/ruby` |
-| Docker images | Dangling and unused images |
+| Docker | Reported only, see [Docker](#docker) |
 | Cargo registry | Cached crates and compiled artifacts |
 | Xcode derived data | iOS/macOS build cache |
 
 Gluttony uses smart detection to avoid false positives — it checks for project markers (e.g., `package.json`, `Cargo.toml`) and git repository ancestry to distinguish developer artefacts from application-bundled ones (VS Code, JetBrains, etc.).
+
+## Docker
+
+Gluttony reports Docker's disk usage (and what `docker system prune` could reclaim when the daemon is running), but **never touches it**: Docker's data lives in a VM disk image or a daemon-owned directory, and moving it would break Docker without freeing space. Prune it through Docker itself:
+
+```bash
+docker system prune -a
+```
 
 ## Platform Support
 
@@ -195,46 +240,49 @@ The CD pipeline handles the rest.
 
 ## Trash & Undo
 
-Gluttony never permanently deletes artefacts immediately. Instead it **moves them to `~/.gluttony/trash/`** and records a session manifest. Sessions are automatically purged after **30 days**.
-
-To restore a previous session:
+By default Gluttony never deletes anything outright: `gluttony clean` **moves artefacts to `~/.gluttony/trash/`** and records the session in a manifest. Keep in mind that trashed files still occupy the disk until the trash is emptied; every scan shows how much the trash holds.
 
 ```bash
-gluttony --undo
+gluttony undo          # pick a session and move everything back
+gluttony trash         # list sessions, their size and expiry
+gluttony trash empty   # free the space for good (asks you to type `empty`)
 ```
 
-To permanently free the disk space occupied by the trash:
+Sessions expire after **30 days** and are purged automatically on the next run. Restoring never overwrites: if a destination already exists (say you ran `npm install` again), that item stays in the trash and the rest is restored.
 
-```bash
-gluttony --empty-trash
-```
+To skip the trash entirely, use `gluttony clean --permanent`.
 
-This shows the total size held in trash, then asks for **double confirmation** with a prominent warning before deleting anything. This action cannot be undone.
+## Configuration
 
-This shows an interactive list of recent sessions. Select one to move everything back to its original location.
+| Variable | Effect |
+|----------|--------|
+| `NO_COLOR` | Disable colours |
+| `GLUTTONY_NO_UPDATE_CHECK` | Disable the background update check (otherwise at most one request a day, 2 s timeout) |
 
 ## Architecture
 
 ```
 src/
-├── main.rs          Entry point — wires CLI to business logic
-├── cli.rs           Argument parsing and flag handling
-├── display.rs       Result formatting, table display, shared theme
+├── main.rs          Entry point, wires commands to business logic
+├── cli.rs           Subcommands, flags, size/age parsers
+├── ui.rs            Visual language: symbols, colours, formatting, prompts
+├── picker.rs        Inline multi/single select with live totals and filtering
+├── display.rs       Summary table, list, project view, JSON, removal plan
+├── cleaner.rs       Selection, confirmation, parallel trash/delete with progress
+├── trash.rs         Trash sessions, manifest, undo/restore, emptying
+├── update.rs        Background, cached update check via the GitHub API
 ├── error.rs         Domain error types
-├── cleaner.rs       Interactive selection, confirmation flow, and parallel deletion
-├── trash.rs         Move-to-trash, manifest management, and undo/restore
-├── update.rs        Auto-update version check via GitHub API
 └── scanner/
-    ├── mod.rs       Public API, scan() orchestration, ArtifactKind/Artifact types
-    ├── walker.rs    Parallel walk logic, classification dispatch, git-ancestry check
+    ├── mod.rs       scan() orchestration, kinds, ecosystems, filters, projects
+    ├── walker.rs    Parallel walk, classification dispatch, git-ancestry check
     ├── node.rs      JS ecosystem (node_modules, .next, .nuxt, .turbo, .parcel-cache)
     ├── python.rs    Python ecosystem (__pycache__, .pytest_cache, .venv, .tox)
-    ├── build.rs     target/ (Cargo + Maven)
+    ├── build.rs     target/ (Cargo, Maven)
     ├── flutter.rs   Flutter build/
     ├── elixir.rs    Elixir _build/
     ├── go.rs        Go module cache
     ├── ruby.rs      Ruby gems
-    └── docker.rs    Docker data paths
+    └── docker.rs    Docker footprint (reported, never cleaned)
 
 scripts/
 ├── install.sh       Installer for macOS and Linux
@@ -252,10 +300,11 @@ Each module has a single responsibility. No unsafe code.
 | [`walkdir`](https://crates.io/crates/walkdir) | Recursive directory traversal |
 | [`rayon`](https://crates.io/crates/rayon) | Parallel scanning and deletion |
 | [`indicatif`](https://crates.io/crates/indicatif) | Progress bars and spinners |
-| [`console`](https://crates.io/crates/console) | Terminal styling and colors |
-| [`dialoguer`](https://crates.io/crates/dialoguer) | Interactive multi-select prompts |
+| [`console`](https://crates.io/crates/console) | Terminal styling, key input, the picker |
+| [`ctrlc`](https://crates.io/crates/ctrlc) | Restores the cursor on interrupt |
+| [`fs4`](https://crates.io/crates/fs4) | Free disk space before/after a permanent clean |
 | [`ureq`](https://crates.io/crates/ureq) | HTTP client for update checks |
-| [`serde`](https://crates.io/crates/serde) / [`serde_json`](https://crates.io/crates/serde_json) | JSON deserialization for GitHub API |
+| [`serde`](https://crates.io/crates/serde) / [`serde_json`](https://crates.io/crates/serde_json) | Manifest, cache and `--json` output |
 | [`thiserror`](https://crates.io/crates/thiserror) | Ergonomic error type derivation |
 
 ## License
